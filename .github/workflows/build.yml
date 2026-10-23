@@ -1,0 +1,192 @@
+name: Auto Fix and Build Android APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Auto-Fix Folder Structure and Configs
+        run: |
+          python3 - << 'PYEOF'
+          import os, shutil
+
+          saved_kt = {}
+          for root, _, files in os.walk("."):
+              for f in files:
+                  if f.endswith(".kt") and not f.endswith(".gradle.kts"):
+                      p = os.path.join(root, f)
+                      if os.path.isfile(p):
+                          txt = open(p, encoding="utf-8").read()
+                          if "package com.retro.unifiedlauncher" in txt:
+                              txt = "package com.retro.unifiedlauncher" + txt.split("package com.retro.unifiedlauncher", 1)[1]
+                          txt = txt.replace("import retrofit2.http.Query", "import retrofit2.http.Query as RetrofitQuery")
+                          txt = txt.replace('@Query("query")', '@RetrofitQuery("query")')
+                          txt = txt.replace('@Query("platform")', '@RetrofitQuery("platform")')
+                          txt = txt.replace('@Query("api_key")', '@RetrofitQuery("api_key")')
+                          saved_kt[f] = txt
+
+          if os.path.exists("app"):
+              shutil.rmtree("app")
+
+          os.makedirs("app/src/main/java/com/retro/unifiedlauncher", exist_ok=True)
+          os.makedirs("app/src/main/res/xml", exist_ok=True)
+
+          for name, code in saved_kt.items():
+              open(f"app/src/main/java/com/retro/unifiedlauncher/{name}", "w", encoding="utf-8").write(code)
+
+          open("settings.gradle.kts", "w", encoding="utf-8").write("""pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "UnifiedEmulatorLauncher"
+          include(":app")
+          """)
+
+          open("build.gradle.kts", "w", encoding="utf-8").write("""plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+              id("com.google.devtools.ksp") version "1.9.24-1.0.20" apply false
+          }
+          """)
+
+          open("gradle.properties", "w", encoding="utf-8").write("""org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          """)
+
+          open("app/build.gradle.kts", "w", encoding="utf-8").write("""plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+              id("com.google.devtools.ksp")
+          }
+          android {
+              namespace = "com.retro.unifiedlauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.retro.unifiedlauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0.0"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+              buildFeatures { compose = true }
+              composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.activity:activity-compose:1.9.2")
+              implementation(platform("androidx.compose:compose-bom:2024.09.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.compose.material:material-icons-extended")
+              implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
+              implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.5")
+              implementation("io.coil-kt:coil-compose:2.7.0")
+              implementation("androidx.room:room-runtime:2.6.1")
+              implementation("androidx.room:room-ktx:2.6.1")
+              ksp("androidx.room:room-compiler:2.6.1")
+              implementation("com.squareup.retrofit2:retrofit:2.11.0")
+              implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+          }
+          """)
+
+          open("app/src/main/AndroidManifest.xml", "w", encoding="utf-8").write("""<?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+              <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+              <queries>
+                  <package android:name="com.retroarch.aarch64" />
+                  <package android:name="com.explusalpha.Snes9xPlus" />
+                  <package android:name="it.dbtecno.pizzaboygba" />
+                  <package android:name="com.dsemu.drastic" />
+                  <package android:name="io.github.lime3ds.android" />
+                  <package android:name="com.github.stenzek.duckstation" />
+                  <package android:name="xyz.aethersx2.android" />
+                  <package android:name="org.ppsspp.ppsspp" />
+                  <package android:name="org.dolphinemu.dolphinemu" />
+                  <package android:name="org.sudachi.sudachi_emu" />
+              </queries>
+              <application
+                  android:label="Unified Emulator Launcher"
+                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="sensorLandscape"
+                      android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  <provider
+                      android:name="androidx.core.content.FileProvider"
+                      android:authorities="${applicationId}.fileprovider"
+                      android:exported="false"
+                      android:grantUriPermissions="true">
+                      <meta-data
+                          android:name="android.support.FILE_PROVIDER_PATHS"
+                          android:resource="@xml/file_paths" />
+                  </provider>
+              </application>
+          </manifest>
+          """)
+
+          open("app/src/main/res/xml/file_paths.xml", "w", encoding="utf-8").write("""<?xml version="1.0" encoding="utf-8"?>
+          <paths>
+              <external-path name="external_storage" path="." />
+              <root-path name="external_sd" path="/storage/" />
+          </paths>
+          """)
+          print("Rescued KT files:", list(saved_kt.keys()))
+          PYEOF
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload Compiled APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnifiedEmulatorLauncher-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+
