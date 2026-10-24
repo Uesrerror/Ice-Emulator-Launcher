@@ -17,6 +17,106 @@ jobs:
           python3 - << 'PYEOF'
           import os, shutil, base64
 
+          explicit_imports = """package com.retro.unifiedlauncher
+
+          import android.app.Application
+          import android.content.BroadcastReceiver
+          import android.content.ComponentName
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.content.pm.PackageManager
+          import android.net.ConnectivityManager
+          import android.net.NetworkCapabilities
+          import android.net.Uri
+          import android.os.BatteryManager
+          import android.os.Bundle
+          import android.view.KeyEvent as AndroidKeyEvent
+          import android.widget.Toast
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.PickVisualMediaRequest
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.animation.AnimatedContent
+          import androidx.compose.animation.Crossfade
+          import androidx.compose.animation.core.FastOutSlowInEasing
+          import androidx.compose.animation.core.animateFloatAsState
+          import androidx.compose.animation.core.tween
+          import androidx.compose.animation.fadeIn
+          import androidx.compose.animation.fadeOut
+          import androidx.compose.animation.togetherWith
+          import androidx.compose.foundation.BorderStroke
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.focusable
+          import androidx.compose.foundation.interaction.MutableInteractionSource
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.LazyListState
+          import androidx.compose.foundation.lazy.LazyRow
+          import androidx.compose.foundation.lazy.itemsIndexed
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.blur
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.draw.shadow
+          import androidx.compose.ui.focus.FocusRequester
+          import androidx.compose.ui.focus.focusRequester
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.vector.ImageVector
+          import androidx.compose.ui.input.key.KeyEventType
+          import androidx.compose.ui.input.key.onPreviewKeyEvent
+          import androidx.compose.ui.input.key.type
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.res.painterResource
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextAlign
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.content.FileProvider
+          import androidx.core.view.WindowCompat
+          import androidx.core.view.WindowInsetsCompat
+          import androidx.core.view.WindowInsetsControllerCompat
+          import androidx.documentfile.provider.DocumentFile
+          import androidx.lifecycle.AndroidViewModel
+          import androidx.lifecycle.viewModelScope
+          import coil.compose.AsyncImage
+          import coil.request.ImageRequest
+          import com.google.gson.Gson
+          import com.google.gson.reflect.TypeToken
+          import java.io.File
+          import java.net.URLEncoder
+          import java.text.SimpleDateFormat
+          import java.util.Date
+          import java.util.Locale
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.flow.MutableStateFlow
+          import kotlinx.coroutines.flow.StateFlow
+          import kotlinx.coroutines.flow.asStateFlow
+          import kotlinx.coroutines.flow.update
+          import kotlinx.coroutines.launch
+          import kotlinx.coroutines.withContext
+          """
+          clean_header = "\n".join(l.strip() for l in explicit_imports.strip().splitlines())
+
           saved_kt = {}
           for root, _, files in os.walk("."):
               for f in files:
@@ -24,28 +124,40 @@ jobs:
                       p = os.path.join(root, f)
                       if os.path.isfile(p):
                           txt = open(p, encoding="utf-8").read()
-                          if "package com.retro.unifiedlauncher" in txt:
-                              txt = "package com.retro.unifiedlauncher" + txt.split("package com.retro.unifiedlauncher", 1)[1]
-                          if "ConfiguredPlatform" in txt:
-                              saved_kt["UnifiedEmulatorLauncher.kt"] = txt
-                          elif "IceConsoleSettingsHub" in txt:
-                              saved_kt["LauncherSettingsAndUi.kt"] = txt
+                          body_lines = [
+                              l for l in txt.splitlines()
+                              if not l.strip().startswith("package ") and not l.strip().startswith("import ")
+                          ]
+                          patched = clean_header + "\n\n" + "\n".join(body_lines) + "\n"
+                          for model in ["ConfiguredPlatform", "ScraperSourceConfig", "GameItem"]:
+                              patched = patched.replace(
+                                  f"gson.fromJson(it, object : TypeToken<List<{model}>>()",
+                                  f"gson.fromJson<List<{model}>>(it, object : TypeToken<List<{model}>>()"
+                              )
+                          patched = patched.replace("itemsIndexed(ConsolePlatform.entries)", "itemsIndexed(ConsolePlatform.entries.toList())")
+
+                          if "fun IceConsoleSettingsHub" in patched:
+                              saved_kt["LauncherSettingsAndUi.kt"] = patched
+                          elif "class RomScannerAndScraperEngine" in patched:
+                              saved_kt["UnifiedEmulatorLauncher.kt"] = patched
 
           if os.path.exists("app"):
               shutil.rmtree("app")
+          for root_kt in ["UnifiedEmulatorLauncher.kt", "LauncherSettingsAndUi.kt"]:
+              if os.path.exists(root_kt):
+                  os.remove(root_kt)
 
           os.makedirs("app/src/main/java/com/retro/unifiedlauncher", exist_ok=True)
           os.makedirs("app/src/main/res/xml", exist_ok=True)
           os.makedirs("app/src/main/res/drawable-nodpi", exist_ok=True)
 
-          # สร้างไฟล์ไอคอนโลโก้แอปจากรูปที่ 4 (app_logo.webp)
           logo_b64 = "UklGRhIJAABXRUJQVlA4WAoAAAAQAAAAXwAAXwAAQUxQSFYAAAABYOS2bRj9/9M+JW1RBT0Ni4gJYN7cfiqOB+K5Ka47YrsW35UY9+LciXUV7yliPkPcXyD2v/++oJDjBVBjBsSYAi2aUrSVWBRiWYeNMuwVYb8Eh69jGVZQOCCWCAAAUCIAnQEqYABgAD6dQphJJaOiKKx8iokQE4lAF2aB3cIB68B6Utuzzymm370ni5ifHSz+r/bLQK/k32e/VcJPAC/Hf55vBoAPqxxEfYzywON29D9gP82+rB/a+Pr86/0fsFfrh1rfRsX/EpIyWsRMuxmZjbJZu5MCD101sLKId6u+Lot8dc4jJyiUEQMwYWelbzdnziMQg6p0914sNkixN/xONwdl914O/zBgCJHhGg7PzCT99zYLGpH1QJnDUQB4vCzlODR9uqW7cdufnFZatfMlSsGvQ/5/wGcdNpdY7PF77i0WquTyjQr1eCNyuZ8x6gfZn8mbPGojflLIzAYgGnv+C9+PJTg0lu2SbHHtcD2VKDY+uVL4YwvYwAD++ja3NeURVhniXmNBz8/jGxin5QCRYC4IXy/o/7Y+pMQPm3xG7LHOiNVX2KfHi5MQquXBdZby+wqYhOKEj030mMxOQ/hqV4lpP9vnoM/fQZvJKGs/cubmSvS3Am8FDbQFK3IPCxn52r8gCFS6dfc+WBhWjnri/BI2YE5XDTD8eptd93p3AgYG1MAf+d6bks50KsW54ZK31u2mXyUU+LY/xok2FfsQPSio1EIOO3Pz0EKbu70Sj3yWaiDmC3jONSZIV+bwAgiYI/3bwdX49LZQhVdTVscR/Z+l9SnmWWu+lb/90A2vkm+DON0Phqdoi3xj6N9jAdibUrYtbTOkqtzUxILspw1f7F/yFRS4xkhSuoTm4ZlfwMFpiVCvHNcIGJck61A37Y0T7q2sx2G1P3sXn4S5WV03K9G3MPdZpVpP/rN4dWLd5jT/WEtOdcugdhOUvUpCmg601qyJ8YVh+DUPqMZ69U6nKDhNq8Sa0teQP1OWGn16e0SyDiBl9z8RgnX4cZqKa2MHOdiYnZYibdXnp9Z5x0FMDiogTboG6hIVI881IYOIHfVXtTbkztZTY6ctUE2G+RvrpYx3WcOChCYRg1DDgka/LWZkGKoBbTfj9ecDk9UYBT3Y1lodwBes3cZvj3lbamz/mx8uzyCvTSAnaG3d4Xdn6meA4SHUzT92K22T9JsNTCQxh7jZJfPx9/DGl+7M1l547TNOG8D+i/+6m/zgOrMZu4+42TkAzo78vcRwHfp3+xmOo9x8JRd10Jg8nil2HezLc6x16l3VqbV5NaeHnsiEp1m34eYizdzFhQPskTTTQLTig/TM+Y6Qx1rBTwXqzloG6Iy84Binj0ivlyyrUm4YKpJnglAcQ1j/GnOy9um0GOr3A3yBwmHH3yi+xcaOpsDG7nErLXbFCQI5lisJShfmviaziGrNmyIBpwNu37wvxMIsVEH21CBpQKqIyuBcX7b/x0w4hvg0JYFXeyrUTkhRd0aQ0t8KIdybZRvZYLqLVvSnkutHBaUQoZrobUQ++FmynPHk17wxJmlhVsUOuuOXnwtQXbVagnmyPPJenrn9tz+zyL5c9zpcjQToQoPVAzVeSqJsP+D9O7YcfS4lfETtyKbWHitoYBW/b4RdOsOW5HkUfg8srey0juWB1uJAXmXdWcRHdGwiGpS1yJXYFEghSETYCAIsOxACvmQV/mtAcKPkT/OvS1LmgTt5xL6moOpFwCbu0AmOzZh3z4nMuE1W1hoqYDHRWOmktamc5Qc3Y1iK0Ha37AJ48BKqCbkLBFZ0fX/uImJKtlTirXEX6PsuX0RMQA7zIpNGBAHcVbemk2xtpRjo3+4HXjeYgMsayFt+rlhw9Rsxfa0F6Qa2OdFNN8f/CNKI/GIRbzlvVa/qiPzkGFAAcPEeTBVRPeXnlPuLg6c11OfhvtCOuGU7zobGnM8c7+TXlmFmTzVVc1ZUeLdwqY3tFcLwecmmTxOvIsoOJHdE88je+FjJZYJKC9f+borVxb9PtkuN8MzK4Jurp4sNvRr+ID+HeIGD9LQN0hwEuXnJZBT8idIh/GMxwek8i+TrTNbmM/3Ei4M39K0ZwM/oItIPpfZ+Az3+ktt3nINuyxPLKwzdVH6bkyZ8/JZUQUKH0/7VyelJ35GWcwit2AFPLAkeBQPxV+cwY7oeqMdQvA0Y4JZK61197oZRreaXSIJhUzDZ+xt0f2+OA/KmlqHsaPwXPIEELyqabGzwEwtrO0bLb9SIA/oTPqG18FpyGQZWCwenwXWMa21mMCIChiySyxq6lzqPgul4/1Ag/XrgwwyluvmK/W53pSLUePspeUquFrwThcpr/loxN9HvCsz8eeSckbqKLP0Khz0JUrP66HB3y3+UuBeR1lMKAkRGlBaKMoXUuH2HQ77aFgK1RMVbKiobwHp9Kd+Bn0prHz64FJzJzGkAa+X58alVuLklAZOu4xgcZYDWOYP4jrF3rcgke4nW21oFPxyi0DQqNAQMWnXd+bvdTHW7yneqkYvc+vLIKeTW7w2ev9+BuNyEd7lBDMVD5iS2TGhtXkQ1VSdV/s1kDDL6B6PHAp69Ts1AwyzB6e7w/HTTXLVuVZ+2nBF5MUfEwCppqbcn0Ec9n/LMEB/GQZTwZ2cfP4xguXvkSYNECMLXcBsr2cLKe/QnRlZTf56enVHbobv5Z4l0270Tfb81WHehMEoyMKAIozO+f1/eIEB2a6MApgBsnLHeV4ulvGZVOSu608BvFYOkme1QLasRYmrOVH1ZZb1wZoQ7YHMUefzmFh4hO+o80qFNWM+NH6fJdVMpJ4mWRhXbSg78ATrmIkhhMdA5FrSFszg+SXlPQ6YRHvEpX0/0qHbkQqsuIYtkTUio714elD19l6QF8LLyf7gc3c0+aV28zybVxgZ6ulBzQcI9lR/e4oQ2efabBtpPDLm8C89AolurLz0GL++nfmoaV8OEWGWf2yMqHdcUkCLQLFHaAV+YJ8dqhQA58N6z+CdGJewS/4WOjahBmRjMaGBkU34521OtITv0Vg+Fjh3a+tjgY5EFpN/T9ZUAAAA="
           open("app/src/main/res/drawable-nodpi/app_logo.webp", "wb").write(base64.b64decode(logo_b64))
 
           for name, code in saved_kt.items():
               open(f"app/src/main/java/com/retro/unifiedlauncher/{name}", "w", encoding="utf-8").write(code)
 
-          open("settings.gradle.kts", "w", encoding="utf-8").write('''pluginManagement {
+          open("settings.gradle.kts", "w", encoding="utf-8").write("""pluginManagement {
               repositories {
                   google()
                   mavenCentral()
@@ -61,21 +173,21 @@ jobs:
           }
           rootProject.name = "IceEmulatorLauncher"
           include(":app")
-          ''')
+          """)
 
-          open("build.gradle.kts", "w", encoding="utf-8").write('''plugins {
+          open("build.gradle.kts", "w", encoding="utf-8").write("""plugins {
               id("com.android.application") version "8.5.2" apply false
               id("org.jetbrains.kotlin.android") version "1.9.24" apply false
           }
-          ''')
+          """)
 
-          open("gradle.properties", "w", encoding="utf-8").write('''org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          open("gradle.properties", "w", encoding="utf-8").write("""org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           android.useAndroidX=true
           kotlin.code.style=official
           android.nonTransitiveRClass=true
-          ''')
+          """)
 
-          open("app/build.gradle.kts", "w", encoding="utf-8").write('''plugins {
+          open("app/build.gradle.kts", "w", encoding="utf-8").write("""plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
           }
@@ -111,9 +223,9 @@ jobs:
               implementation("io.coil-kt:coil-compose:2.7.0")
               implementation("com.google.code.gson:gson:2.11.0")
           }
-          ''')
+          """)
 
-          open("app/src/main/AndroidManifest.xml", "w", encoding="utf-8").write('''<?xml version="1.0" encoding="utf-8"?>
+          open("app/src/main/AndroidManifest.xml", "w", encoding="utf-8").write("""<?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -168,15 +280,16 @@ jobs:
                   </provider>
               </application>
           </manifest>
-          ''')
+          """)
 
-          open("app/src/main/res/xml/file_paths.xml", "w", encoding="utf-8").write('''<?xml version="1.0" encoding="utf-8"?>
+          open("app/src/main/res/xml/file_paths.xml", "w", encoding="utf-8").write("""<?xml version="1.0" encoding="utf-8"?>
           <paths>
               <external-path name="external_storage" path="." />
               <root-path name="external_sd" path="/storage/" />
           </paths>
-          ''')
-          print("Successfully configured v2 project with custom logo! KT files:", list(saved_kt.keys()))
+          """)
+          print("Successfully configured v2 project! KT files:", list(saved_kt.keys()))
+          assert len(saved_kt) == 2, f"Missing KT file! Found only: {list(saved_kt.keys())}"
           PYEOF
 
       - name: Set up JDK 17
