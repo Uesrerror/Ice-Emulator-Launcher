@@ -1,0 +1,23 @@
+name: Build Ice v4 APK
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          python3 -c 'import os,re,json,lzma,base64,shutil,subprocess; raw=subprocess.check_output(["git","log","-p","--all"],text=True); m=re.search("(/Td6WFoAAATm1rRGAgAhAR[A-Za-z0-9+/=]+)",raw); shutil.rmtree("app",ignore_errors=True); data=json.loads(lzma.decompress(base64.b64decode(m.group(1))).decode("utf-8")); logo=data.pop("LOGO_B64"); [os.makedirs(os.path.dirname(p) or ".",exist_ok=True) or open(p,"w",encoding="utf-8").write(c) for p,c in data.items()]; os.makedirs("app/src/main/res/drawable-nodpi",exist_ok=True); open("app/src/main/res/drawable-nodpi/app_logo.webp","wb").write(base64.b64decode(logo)); print("Unpacked:",list(data.keys()))'
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.9'
+      - run: gradle assembleDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IceEmulatorLauncher-v4-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
